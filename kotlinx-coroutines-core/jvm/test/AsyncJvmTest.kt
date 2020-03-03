@@ -4,18 +4,22 @@
 
 package kotlinx.coroutines
 
+import kotlinx.coroutines.flow.*
+import kotlin.coroutines.*
 import kotlin.test.*
 
 class AsyncJvmTest : TestBase() {
-    // This must be a common test but it fails on JS because of KT-21961
+
+    private val emitFun =
+        FlowCollector<*>::emit as Function3<FlowCollector<Any?>, Any?, Continuation<Unit>, Any?>
+
+
     @Test
-    fun testAsyncWithFinally() = runTest {
-         launch(Dispatchers.Default) {
-
-         }
-
-        launch(Dispatchers.IO) {
-
+    fun testCCe() = runBlocking {
+        val flow = flow<Any?> {
+            val collector = this
+            emitFun.invoke(this, 42, Continuation(EmptyCoroutineContext) { })
         }
+        flow.collect()
     }
 }
