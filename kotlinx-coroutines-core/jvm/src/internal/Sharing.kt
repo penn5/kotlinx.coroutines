@@ -55,12 +55,34 @@ internal actual inline fun <T> Continuation<T>.shareableInterceptedResumeCancell
 
 @InlineOnly
 @Suppress("NOTHING_TO_INLINE") // Should be NOP
+internal actual inline fun <T> Continuation<T>.shareableInterceptedResumeWith(result: Result<T>) {
+    intercepted().resumeWith(result)
+}
+
+@InlineOnly
+@Suppress("NOTHING_TO_INLINE") // Should be NOP
+internal actual inline fun <T> Continuation<T>.shareableDispose() {}
+
+@InlineOnly
+@Suppress("NOTHING_TO_INLINE") // Should be NOP
 internal actual inline fun disposeContinuation(cont: () -> Continuation<*>) {}
 
 @InlineOnly
 @Suppress("NOTHING_TO_INLINE") // Save an entry on call stack
 internal actual inline fun <T> CancellableContinuationImpl<T>.shareableResume(delegate: Continuation<T>, useMode: Int) =
     resumeImpl(delegate, useMode)
+
+@InlineOnly
+@Suppress("NOTHING_TO_INLINE") // Should be NOP
+internal actual inline fun <T, R> (suspend (T) -> R).asShareable(): suspend (T) -> R = this
+
+@InlineOnly
+@Suppress("NOTHING_TO_INLINE") // Should be NOP
+internal actual inline fun <T, R> (suspend (T) -> R).shareableDispose(useIt: Boolean) {}
+
+@InlineOnly
+@Suppress("NOTHING_TO_INLINE") // Should be NOP
+internal actual inline fun <T, R> (suspend (T) -> R).shareableWillBeUsed() {}
 
 @InlineOnly
 @Suppress("NOTHING_TO_INLINE") // Save an entry on call stack

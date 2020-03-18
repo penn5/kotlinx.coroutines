@@ -174,13 +174,13 @@ public suspend inline operator fun <T> CoroutineDispatcher.invoke(
 
 internal fun <T, R> startCoroutineImpl(
     start: CoroutineStart,
-    coroutine: AbstractCoroutine<T>,
     receiver: R,
+    completion: Continuation<T>,
     block: suspend R.() -> T
 ) = when (start) {
-    CoroutineStart.DEFAULT -> block.startCoroutineCancellable(receiver, coroutine)
-    CoroutineStart.ATOMIC -> block.startCoroutine(receiver, coroutine)
-    CoroutineStart.UNDISPATCHED -> block.startCoroutineUndispatched(receiver, coroutine)
+    CoroutineStart.DEFAULT -> block.startCoroutineCancellable(receiver, completion)
+    CoroutineStart.ATOMIC -> block.startCoroutine(receiver, completion)
+    CoroutineStart.UNDISPATCHED -> block.startCoroutineUndispatched(receiver, completion)
     CoroutineStart.LAZY -> Unit // will start lazily
 }
 
@@ -189,8 +189,8 @@ internal fun <T, R> startCoroutineImpl(
 // todo: impl a separate startCoroutineCancellable as a fast-path for startCoroutine(DEFAULT, ...)
 internal expect fun <T, R> startCoroutine(
     start: CoroutineStart,
-    coroutine: AbstractCoroutine<T>,
     receiver: R,
+    completion: Continuation<T>,
     block: suspend R.() -> T
 )
 

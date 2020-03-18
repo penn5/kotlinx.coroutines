@@ -90,24 +90,24 @@ internal fun runEventLoop(eventLoop: EventLoop?, isCompleted: () -> Boolean) {
 
 internal actual fun <T, R> startCoroutine(
     start: CoroutineStart,
-    coroutine: AbstractCoroutine<T>,
     receiver: R,
+    completion: Continuation<T>,
     block: suspend R.() -> T
 ) {
     val curThread = currentThread()
-    val newThread = coroutine.context[ContinuationInterceptor].thread()
+    val newThread = completion.context[ContinuationInterceptor].thread()
     if (newThread != curThread) {
         check(start != CoroutineStart.UNDISPATCHED) {
             "Cannot start an undispatched coroutine in another thread $newThread from current $curThread"
         }
         if (start != CoroutineStart.LAZY) {
             newThread.execute {
-                startCoroutineImpl(start, coroutine, receiver, block)
+                startCoroutineImpl(start, receiver, completion, block)
             }
         }
         return
     }
-    startCoroutineImpl(start, coroutine, receiver, block)
+    startCoroutineImpl(start, receiver, completion, block)
 }
 
 private fun ContinuationInterceptor?.thread(): Thread = when (this) {
@@ -129,4 +129,4 @@ internal actual fun <T, R> startLazyCoroutine(
     coroutine: AbstractCoroutine<T>,
     receiver: R
 ) =
-    startCoroutine(CoroutineStart.DEFAULT, coroutine, receiver, saved as suspend R.() -> T)
+    startCoroutine(CoroutineStart.DEFAULT, receiver, coroutine, saved as suspend R.() -> T)

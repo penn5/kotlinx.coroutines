@@ -99,11 +99,11 @@ private class BlockingCoroutine<T>(
 @Suppress("NOTHING_TO_INLINE") // Save an entry on call stack
 internal actual inline fun <T, R> startCoroutine(
     start: CoroutineStart,
-    coroutine: AbstractCoroutine<T>,
     receiver: R,
+    completion: Continuation<T>,
     noinline block: suspend R.() -> T
 ) =
-    startCoroutineImpl(start, coroutine, receiver, block)
+    startCoroutineImpl(start, receiver, completion, block)
 
 @Suppress("NOTHING_TO_INLINE") // Save an entry on call stack
 internal actual inline fun <T, R> saveLazyCoroutine(

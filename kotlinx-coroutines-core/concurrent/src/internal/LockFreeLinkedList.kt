@@ -268,7 +268,10 @@ public actual open class LockFreeLinkedListNode {
         while (true) { // lock-free loop on next
             val next = this.next ?: return null // abort when unlinked on Kotlin/Native
             if (next is Removed) return next.ref // was already removed -- don't try to help (original thread will take care)
-            if (next === this) return next // was not even added
+            if (next === this) {
+                _prev.value = null // Unlink this node from itself to avoid cycle on Kotlin/Native
+                return next // was not even added
+            }
             val removed = (next as Node).removed()
             if (_next.compareAndSet(next, removed)) {
                 // was removed successfully (linearized remove) -- fixup the list
