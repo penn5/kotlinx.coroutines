@@ -1073,8 +1073,8 @@ public final class kotlinx/coroutines/selects/SelectBuilderImpl : kotlinx/corout
 	public fun resumeSelectWithException (Ljava/lang/Throwable;)V
 	public fun resumeWith (Ljava/lang/Object;)V
 	public fun toString ()Ljava/lang/String;
-	public fun trySelect ()Z
-	public fun trySelectOther (Lkotlinx/coroutines/internal/LockFreeLinkedListNode$PrepareOp;)Ljava/lang/Object;
+	public fun trySelect (Lkotlin/jvm/functions/Function0;)Z
+	public fun trySelectOther (Lkotlinx/coroutines/internal/LockFreeLinkedListNode$PrepareOp;Lkotlin/jvm/functions/Function0;)Ljava/lang/Object;
 }
 
 public abstract interface class kotlinx/coroutines/selects/SelectClause0 {
@@ -1095,8 +1095,12 @@ public abstract interface class kotlinx/coroutines/selects/SelectInstance {
 	public abstract fun isSelected ()Z
 	public abstract fun performAtomicTrySelect (Lkotlinx/coroutines/internal/AtomicDesc;)Ljava/lang/Object;
 	public abstract fun resumeSelectWithException (Ljava/lang/Throwable;)V
-	public abstract fun trySelect ()Z
-	public abstract fun trySelectOther (Lkotlinx/coroutines/internal/LockFreeLinkedListNode$PrepareOp;)Ljava/lang/Object;
+	public abstract fun trySelect (Lkotlin/jvm/functions/Function0;)Z
+	public abstract fun trySelectOther (Lkotlinx/coroutines/internal/LockFreeLinkedListNode$PrepareOp;Lkotlin/jvm/functions/Function0;)Ljava/lang/Object;
+}
+
+public final class kotlinx/coroutines/selects/SelectInstance$DefaultImpls {
+	public static synthetic fun trySelect$default (Lkotlinx/coroutines/selects/SelectInstance;Lkotlin/jvm/functions/Function0;ILjava/lang/Object;)Z
 }
 
 public final class kotlinx/coroutines/selects/SelectKt {

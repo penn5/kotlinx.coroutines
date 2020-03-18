@@ -4,7 +4,6 @@
 
 package kotlinx.coroutines.channels
 
-import kotlinx.coroutines.*
 import kotlinx.coroutines.internal.*
 import kotlinx.coroutines.selects.*
 import kotlin.jvm.*
@@ -36,6 +35,7 @@ internal open class ConflatedChannel<E> : AbstractChannel<E>() {
     // result is `OFFER_SUCCESS | Closed`
     protected override fun offerInternal(element: E): Any {
         var receive: ReceiveOrClosed<E>? = null
+        var token: Any? = null
         state.withLock {
             closedForSend?.let { return it }
             // if there is no element written in buffer
@@ -46,24 +46,22 @@ internal open class ConflatedChannel<E> : AbstractChannel<E>() {
                     if (receive is Closed) {
                         return receive!!
                     }
-                    val token = receive!!.tryResumeReceive(element, null)
-                    if (token != null) {
-                        assert { token === RESUME_TOKEN }
-                        return@withLock
-                    }
+                    token = receive!!.tryResumeReceive(element, null)
+                    if (token != null) return@withLock
                 }
             }
             state.value = element
             return OFFER_SUCCESS
         }
         // breaks here if offer meets receiver
-        receive!!.completeResumeReceive(element)
+        receive!!.completeResumeReceive(element, token!!)
         return receive!!.offerResult
     }
 
     // result is `ALREADY_SELECTED | OFFER_SUCCESS | Closed`
     protected override fun offerSelectInternal(element: E, select: SelectInstance<*>): Any {
         var receive: ReceiveOrClosed<E>? = null
+        var token: Any? =  null
         state.withLock {
             closedForSend?.let { return it }
             if (state.value === EMPTY) {
@@ -73,6 +71,7 @@ internal open class ConflatedChannel<E> : AbstractChannel<E>() {
                     when {
                         failure == null -> { // offered successfully
                             receive = offerOp.result
+                            token = offerOp.takeToken()
                             return@withLock
                         }
                         failure === OFFER_FAILED -> break@loop // cannot offer -> Ok to queue to buffer
@@ -90,7 +89,7 @@ internal open class ConflatedChannel<E> : AbstractChannel<E>() {
             return OFFER_SUCCESS
         }
         // breaks here if offer meets receiver
-        receive!!.completeResumeReceive(element)
+        receive!!.completeResumeReceive(element, token!!)
         return receive!!.offerResult
     }
 

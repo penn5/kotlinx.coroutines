@@ -9,6 +9,7 @@ import kotlinx.cinterop.*
 import kotlinx.coroutines.*
 import kotlin.coroutines.*
 import kotlin.coroutines.intrinsics.*
+import kotlin.internal.*
 import kotlin.native.concurrent.*
 import kotlin.native.ref.*
 
@@ -66,6 +67,35 @@ internal actual fun <T> Continuation<T>.shareableInterceptedResumeCancellableWit
     }
 }
 
+internal actual fun <T> Continuation<T>.shareableInterceptedResumeWith(result: Result<T>) {
+    this as ShareableContinuation<T> // must have been shared
+    if (currentThread() == thread) {
+        useRef().intercepted().resumeWith(result)
+    } else {
+        thread.execute {
+            useRef().intercepted().resumeWith(result)
+        }
+    }
+}
+
+internal actual inline fun <T> Continuation<T>.shareableDispose() {
+    this as ShareableContinuation<T> // must have been shared
+    disposeRef()
+}
+
+internal actual fun <T, R> (suspend (T) -> R).asShareable(): suspend (T) -> R =
+    ShareableBlock(this)
+
+internal actual fun <T, R> (suspend (T) -> R).shareableDispose(useIt: Boolean) {
+    this as ShareableBlock<*, *> // must have been shared
+    dispose(useIt)
+}
+
+internal actual fun <T, R> (suspend (T) -> R).shareableWillBeUsed() {
+    this as ShareableBlock<*, *> // must have been shared
+    willBeUsed()
+}
+
 @PublishedApi
 internal actual inline fun disposeContinuation(cont: () -> Continuation<*>) {
     (cont() as ShareableContinuation<*>).disposeRef()
@@ -112,12 +142,12 @@ internal actual inline fun <T> ArrayList<T>.addOrUpdate(index: Int, element: T, 
 @Suppress("NOTHING_TO_INLINE")
 internal actual inline fun Any.weakRef(): Any = WeakReference(this)
 
-internal actual fun Any?.unweakRef(): Any? = (this as WeakReference<Any>?)?.get()
+internal actual fun Any?.unweakRef(): Any? = (this as WeakReference<*>?)?.get()
 
 internal open class ShareableObject<T : Any>(obj: T) {
     val thread: Thread = currentThread()
 
-    // todo: this is best effort (fail-fast) double-dispose protection, does not provide memory safety guarantee
+    // todo: this is the best effort (fail-fast) double-dispose protection, does not provide memory safety guarantee
     private val _ref = atomic<StableRef<T>?>(StableRef.create(obj))
 
     fun localRef(): T {
@@ -191,6 +221,38 @@ private class ShareableDisposableHandle(
         } else {
             thread.execute {
                 disposeRef()?.dispose()
+            }
+        }
+    }
+}
+
+private typealias Block1<T, R> = suspend (T) -> R
+private typealias Fun2<T, R> = Function2<T, Continuation<R>, Any?>
+
+// todo: SuspendFunction impl is a hack to workaround the absence of proper suspend fun implementation ability
+@Suppress("SUPERTYPE_IS_SUSPEND_FUNCTION_TYPE", "INCONSISTENT_TYPE_PARAMETER_VALUES")
+private class ShareableBlock<T, R>(
+    block: Block1<T, R>
+) : ShareableObject<Block1<T, R>>(block), Block1<T, R>, SuspendFunction<R>, Fun2<T, R> {
+    private val willBeUsed = atomic(false)
+
+    override suspend fun invoke(param: T): R = useRef().invoke(param)
+
+    @Suppress("UNCHECKED_CAST")
+    override fun invoke(param: T, cont: Continuation<R>): Any? =
+        (useRef() as Fun2<T, R>).invoke(param, cont)
+
+    fun willBeUsed() {
+        willBeUsed.value = true
+    }
+
+    fun dispose(useIt: Boolean) {
+        if (willBeUsed.value && !useIt) return
+        if (currentThread() == thread) {
+            disposeRef()
+        } else {
+            thread.execute {
+                disposeRef()
             }
         }
     }

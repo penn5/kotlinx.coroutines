@@ -143,6 +143,7 @@ internal class ArrayBroadcastChannel<E>(
     private tailrec fun updateHead(addSub: Subscriber<E>? = null, removeSub: Subscriber<E>? = null) {
         // update head in a tail rec loop
         var send: Send? = null
+        var token: Any? = null
         state.withLock {
             if (addSub != null) {
                 addSub.subHead = tail // start from last element
@@ -171,9 +172,8 @@ internal class ArrayBroadcastChannel<E>(
                     while (true) {
                         send = takeFirstSendOrPeekClosed() ?: break // when when no sender
                         if (send is Closed<*>) break // break when closed for send
-                        val token = send!!.tryResumeSend(null)
+                        token = send!!.tryResumeSend(null)
                         if (token != null) {
-                            assert { token === RESUME_TOKEN }
                             // put sent element to the buffer
                             state.setBufferAt((tail % capacity).toInt(), (send as Send).pollResult)
                             this.size = size + 1
@@ -186,7 +186,7 @@ internal class ArrayBroadcastChannel<E>(
             return // done updating here -> return
         }
         // we only get out of the lock normally when there is a sender to resume
-        send!!.completeResumeSend()
+        send!!.completeResumeSend(token!!)
         // since we've just sent an element, we might need to resume some receivers
         checkSubOffers()
         // tailrec call to recheck
@@ -237,6 +237,7 @@ internal class ArrayBroadcastChannel<E>(
                 if (!subLock.tryLock()) break
                 val receive: ReceiveOrClosed<E>?
                 var result: Any?
+                var token: Any?
                 try {
                     result = peekUnderLock()
                     when {
@@ -249,15 +250,14 @@ internal class ArrayBroadcastChannel<E>(
                     // find a receiver for an element
                     receive = takeFirstReceiveOrPeekClosed() ?: break // break when no one's receiving
                     if (receive is Closed<*>) break // noting more to do if this sub already closed
-                    val token = receive.tryResumeReceive(result as E, null) ?: continue
-                    assert { token === RESUME_TOKEN }
+                    token = receive.tryResumeReceive(result as E, null) ?: continue
                     val subHead = this.subHead
                     this.subHead = subHead + 1 // retrieved element for this subscriber
                     updated = true
                 } finally {
                     subLock.unlock()
                 }
-                receive!!.completeResumeReceive(result as E)
+                receive!!.completeResumeReceive(result as E, token!!)
             }
             // do close outside of lock if needed
             closed?.also { close(cause = it.closeCause) }

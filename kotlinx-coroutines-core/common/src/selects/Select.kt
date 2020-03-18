@@ -116,7 +116,7 @@ public interface SelectInstance<in R> {
     /**
      * Tries to select this instance. Returns `true` on success.
      */
-    public fun trySelect(): Boolean
+    public fun trySelect(onSelect: () -> Unit = {}): Boolean
 
     /**
      * Tries to select this instance. Returns:
@@ -130,7 +130,7 @@ public interface SelectInstance<in R> {
      * member is public, but [Symbol] is internal. When [SelectInstance] becomes a `sealed interface`
      * (see KT-222860) we can declare this method as internal.
      */
-    public fun trySelectOther(otherOp: PrepareOp?): Any?
+    public fun trySelectOther(otherOp: PrepareOp?, onSelect: () -> Unit): Any?
 
     /**
      * Performs action atomically with [trySelect].
@@ -233,10 +233,12 @@ private val selectOpSequenceNumber = SeqNumber()
 
 @PublishedApi
 internal class SelectBuilderImpl<in R>(
-    private val uCont: Continuation<R> // unintercepted delegate continuation
+    uCont: Continuation<R>
 ) : LockFreeLinkedListHead(), SelectBuilder<R>,
     SelectInstance<R>, Continuation<R>, CoroutineStackFrame
 {
+    private val uCont: Continuation<R> = uCont.asShareable() // unintercepted delegate continuation, shareable
+
     override val callerFrame: CoroutineStackFrame?
         get() = uCont as? CoroutineStackFrame
 
@@ -280,7 +282,10 @@ internal class SelectBuilderImpl<in R>(
             when {
                 result === UNDECIDED -> {
                     val update = value()
-                    if (_result.compareAndSet(UNDECIDED, update)) return
+                    if (_result.compareAndSet(UNDECIDED, update)) {
+                        uCont.shareableDispose() // will return result without calling continuation
+                        return
+                    }
                 }
                 result === COROUTINE_SUSPENDED -> if (_result.compareAndSet(COROUTINE_SUSPENDED, RESUMED)) {
                     block()
@@ -305,7 +310,7 @@ internal class SelectBuilderImpl<in R>(
     // Resumes in dispatched way so that it can be called from an arbitrary context
     override fun resumeSelectWithException(exception: Throwable) {
         doResume({ CompletedExceptionally(recoverStackTrace(exception, uCont)) }) {
-            uCont.intercepted().resumeWith(Result.failure(exception))
+            uCont.shareableInterceptedResumeWith(Result.failure(exception))
         }
     }
 
@@ -346,16 +351,19 @@ internal class SelectBuilderImpl<in R>(
     internal fun handleBuilderException(e: Throwable) {
         if (trySelect()) {
             resumeWithException(e)
-        } else if (e !is CancellationException) {
-            /*
-             * Cannot handle this exception -- builder was already resumed with a different exception,
-             * so treat it as "unhandled exception". But only if  it is not the completion reason
-             *  and it's not the cancellation. Otherwise, in the face of structured concurrency
-             * the same exception will be reported to the global exception handler.
-             */
-            val result = getResult()
-            if (result !is CompletedExceptionally || unwrap(result.cause) !== unwrap(e)) {
-                handleCoroutineException(context, e)
+        } else {
+            disposeLockFreeLinkedList { this }
+            if (e !is CancellationException) {
+                /*
+                 * Cannot handle this exception -- builder was already resumed with a different exception,
+                 * so treat it as "unhandled exception". But only if  it is not the completion reason
+                 * and it's not the cancellation. Otherwise, in the face of structured concurrency
+                 * the same exception will be reported to the global exception handler.
+                 */
+                val result = getResult()
+                if (result !is CompletedExceptionally || unwrap(result.cause) !== unwrap(e)) {
+                    handleCoroutineException(context, e)
+                }
             }
         }
     }
@@ -381,14 +389,16 @@ internal class SelectBuilderImpl<in R>(
     }
 
     private fun doAfterSelect() {
+        val parentHandle = _parentHandle.getAndSet(null)
         parentHandle?.dispose()
         forEach<DisposeNode> {
-            it.handle.dispose()
+            it.dispose()
         }
+        disposeLockFreeLinkedList { this }
     }
 
-    override fun trySelect(): Boolean {
-        val result = trySelectOther(null)
+    override fun trySelect(onSelect: () -> Unit): Boolean {
+        val result = trySelectOther(null, onSelect)
         return when {
             result === RESUME_TOKEN -> true
             result == null -> false
@@ -481,7 +491,7 @@ internal class SelectBuilderImpl<in R>(
 
     // it is just like plain trySelect, but support idempotent start
     // Returns RESUME_TOKEN | RETRY_ATOMIC | null (when already selected)
-    override fun trySelectOther(otherOp: PrepareOp?): Any? {
+    override fun trySelectOther(otherOp: PrepareOp?, onSelect: () -> Unit): Any? {
         _state.loop { state -> // lock-free loop on state
             when {
                 // Found initial state (not selected yet) -- try to make it selected
@@ -496,6 +506,7 @@ internal class SelectBuilderImpl<in R>(
                         val decision = pairSelectOp.perform(this)
                         if (decision !== null) return decision
                     }
+                    onSelect()
                     doAfterSelect()
                     return RESUME_TOKEN
                 }
@@ -653,6 +664,13 @@ internal class SelectBuilderImpl<in R>(
     }
 
     private class DisposeNode(
-        @JvmField val handle: DisposableHandle
-    ) : LockFreeLinkedListNode()
+        handle: DisposableHandle
+    ) : LockFreeLinkedListNode() {
+        private val _handle = atomic<DisposableHandle?>(handle)
+
+        fun dispose() {
+            val handle = _handle.getAndSet(null)
+            handle?.dispose()
+        }
+    }
 }
