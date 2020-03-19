@@ -60,7 +60,7 @@ kotlin {
             dependencies {
                 // todo: we should not need it
                 // todo: it must be compileOnly or JVM is spoiled !!!
-                implementation "org.jetbrains.kotlinx:atomicfu-common:$atomicfu_version"
+                implementation "org.jetbrains.kotlinx:atomicfu-native:$atomicfu_version"
             }
         }
     }
