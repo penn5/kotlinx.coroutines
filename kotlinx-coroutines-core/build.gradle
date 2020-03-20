@@ -109,6 +109,11 @@ kotlin {
     }
 }
 
+// HMPP workaround so that we can use locally-build atomicfu snapshot with a subset of targets
+kotlin.targets.withType(org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget)
+        .matching { !project.ext.hostManager.isEnabled(it.konanTarget) }
+        .all { compilations.all { it.compileDependencyFiles = files() } }
+
 configurations {
     configureKotlinJvmPlatform(kotlinCompilerPluginClasspath)
 }
