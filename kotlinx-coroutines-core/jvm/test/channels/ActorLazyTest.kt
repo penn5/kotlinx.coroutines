@@ -8,7 +8,7 @@ import kotlinx.coroutines.*
 import org.junit.Test
 import kotlin.test.*
 
-class ActorLazyTest : TestBase() {
+class OldActorLazyTest : TestBase() {
     @Test
     fun testEmptyStart() = runBlocking {
         expect(1)

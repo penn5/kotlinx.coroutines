@@ -2,6 +2,8 @@
  * Copyright 2016-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license.
  */
 
+@file:Suppress("DEPRECATION")
+
 package kotlinx.coroutines.channels
 
 import kotlinx.coroutines.*
@@ -17,6 +19,7 @@ import kotlin.coroutines.intrinsics.*
  *           See [issue #87](https://github.com/Kotlin/kotlinx.coroutines/issues/87).
  */
 @ObsoleteCoroutinesApi
+@Deprecated("Use BaseActor instead")
 public interface ActorScope<E> : CoroutineScope, ReceiveChannel<E> {
     /**
      * A reference to the mailbox channel that this coroutine [receives][receive] messages from.
@@ -106,6 +109,7 @@ public interface ActorScope<E> : CoroutineScope, ReceiveChannel<E> {
  * @param block the coroutine code.
  */
 @ObsoleteCoroutinesApi
+@Deprecated("Use BaseActor instead")
 public fun <E> CoroutineScope.actor(
     context: CoroutineContext = EmptyCoroutineContext,
     capacity: Int = 0, // todo: Maybe Channel.DEFAULT here?
@@ -123,6 +127,7 @@ public fun <E> CoroutineScope.actor(
     return coroutine
 }
 
+@Deprecated("Use BaseActor instead")
 private open class ActorCoroutine<E>(
     parentContext: CoroutineContext,
     channel: Channel<E>,
@@ -141,6 +146,7 @@ private open class ActorCoroutine<E>(
     }
 }
 
+@Deprecated("Use BaseActor instead")
 private class LazyActorCoroutine<E>(
     parentContext: CoroutineContext,
     channel: Channel<E>,

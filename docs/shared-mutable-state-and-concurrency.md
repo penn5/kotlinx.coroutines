@@ -397,63 +397,26 @@ is confined to.
 
 ### Actors
 
-An [actor](https://en.wikipedia.org/wiki/Actor_model) is an entity made up of a combination of a coroutine,
-the state that is confined and encapsulated into this coroutine,
-and a channel to communicate with other coroutines. A simple actor can be written as a function, 
-but an actor with a complex state is better suited for a class. 
+An [actor](https://en.wikipedia.org/wiki/Actor_model) is a way of preserving mutable data by using messages.
+The state of the actor is stored in a private field, and is only accessible from a specific coroutine (or set thereof).
 
-There is an [actor] coroutine builder that conveniently combines actor's mailbox channel into its 
-scope to receive messages from and combines the send channel into the resulting job object, so that a 
-single reference to the actor can be carried around as its handle.
+The first step to using an actor is to create the class that the state is encapsulated in. This class can be created
+either through delegation or through derivation. Generally, there is less boilerplate and simpler code when using
+derivation, but it is incompatible when you are subclassing another class, as classes can only have one superclass.
 
-The first step of using an actor is to define a class of messages that an actor is going to process.
-Kotlin's [sealed classes](https://kotlinlang.org/docs/reference/sealed-classes.html) are well suited for that purpose.
-We define `CounterMsg` sealed class with `IncCounter` message to increment a counter and `GetCounter` message
-to get its value. The later needs to send a response. A [CompletableDeferred] communication
-primitive, that represents a single value that will be known (communicated) in the future,
-is used here for that purpose.
+To create this class through derivation, simply extend BaseActor and use the `act` function for any state-private data.
+For example:
+
 
 <div class="sample" markdown="1" theme="idea" data-highlight-only>
 
-```kotlin
-// Message types for counterActor
-sealed class CounterMsg
-object IncCounter : CounterMsg() // one-way message to increment counter
-class GetCounter(val response: CompletableDeferred<Int>) : CounterMsg() // a request with reply
-```
-
-</div>
-
-Then we define a function that launches an actor using an [actor] coroutine builder:
-
-<div class="sample" markdown="1" theme="idea" data-highlight-only>
-
-```kotlin
-// This function launches a new counter actor
-fun CoroutineScope.counterActor() = actor<CounterMsg> {
-    var counter = 0 // actor state
-    for (msg in channel) { // iterate over incoming messages
-        when (msg) {
-            is IncCounter -> counter++
-            is GetCounter -> msg.response.complete(counter)
-        }
-    }
-}
-```
-
-</div>
-
-The main code is straightforward:
-
-<!--- CLEAR -->
-
-<div class="sample" markdown="1" theme="idea" data-min-compiler-version="1.3">
-
-```kotlin
+<!--- INCLUDE
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.*
 import kotlin.system.*
+-->
 
+```kotlin
 suspend fun massiveRun(action: suspend () -> Unit) {
     val n = 100  // number of coroutines to launch
     val k = 1000 // times an action is repeated by each coroutine
@@ -469,37 +432,70 @@ suspend fun massiveRun(action: suspend () -> Unit) {
     println("Completed ${n * k} actions in $time ms")    
 }
 
-// Message types for counterActor
-sealed class CounterMsg
-object IncCounter : CounterMsg() // one-way message to increment counter
-class GetCounter(val response: CompletableDeferred<Int>) : CounterMsg() // a request with reply
+//sampleStart
+class CounterActor(scope: CoroutineScope) : BaseActor(scope) {
+    private var counter = 0
 
-// This function launches a new counter actor
-fun CoroutineScope.counterActor() = actor<CounterMsg> {
-    var counter = 0 // actor state
-    for (msg in channel) { // iterate over incoming messages
-        when (msg) {
-            is IncCounter -> counter++
-            is GetCounter -> msg.response.complete(counter)
-        }
+    suspend fun increment(): Int = act {
+        counter++
+    }
+
+    suspend fun getCounter(): In t = act {
+        counter
     }
 }
+//sampleEnd
+```
+
+</div>
+
+Or to create a delegating Actor through delegation:
+<div class="sample" markdown="1" theme="idea" data-highlight-only>
+
+```kotlin
+open class MySuperClass
 
 //sampleStart
-fun main() = runBlocking<Unit> {
-    val counter = counterActor() // create the actor
-    withContext(Dispatchers.Default) {
-        massiveRun {
-            counter.send(IncCounter)
-        }
+class DelegatingCounterActor(scope: CoroutineScope) : MySuperClass() {
+    private val act = ActorImpl(scope)
+    private var counter = 0
+
+    suspend fun increment(): Int = act {
+        counter++
     }
-    // send a message to get a counter value from an actor
-    val response = CompletableDeferred<Int>()
-    counter.send(GetCounter(response))
-    println("Counter = ${response.await()}")
-    counter.close() // shutdown the actor
+
+    suspend fun getCounter(): Int = act {
+        counter
+    }
+
+    suspend fun cancel() = act.cancel()
 }
-//sampleEnd    
+//sampleEnd
+```
+
+</div>
+
+Using these actors is as simple as invoking the functions on them. By default, they are initialized lazily, so the
+underlying coroutines will not be started until the first invocation. If the underlying coroutines were started,
+it is essential to close the actor, otherwise the parent scope will hang forever.
+
+Implementing our above example using this pattern, we get:
+
+<div class="sample" markdown="1" theme="idea" data-highlight-only>
+
+```kotlin
+//sampleStart
+fun main() = runBlocking {
+    withContext(Dispatchers.Default) {
+        val counter = CounterActor(this)
+        massiveRun {
+            counter.increment()
+        }
+        println("Counter = ${counter.getCounter()}")
+        counter.cancel()
+    }
+}
+//sampleEnd
 ```
 
 </div>
@@ -519,21 +515,14 @@ but can only affect each other through messages (avoiding the need for any locks
 Actor is more efficient than locking under load, because in this case it always has work to do and it does not 
 have to switch to a different context at all.
 
-> Note that an [actor] coroutine builder is a dual of [produce] coroutine builder. An actor is associated 
-  with the channel that it receives messages from, while a producer is associated with the channel that it 
-  sends elements to.
-
 <!--- MODULE kotlinx-coroutines-core -->
 <!--- INDEX kotlinx.coroutines -->
 [Dispatchers.Default]: https://kotlin.github.io/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/-dispatchers/-default.html
 [withContext]: https://kotlin.github.io/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/with-context.html
-[CompletableDeferred]: https://kotlin.github.io/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/-completable-deferred/index.html
 <!--- INDEX kotlinx.coroutines.sync -->
 [Mutex]: https://kotlin.github.io/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines.sync/-mutex/index.html
 [Mutex.lock]: https://kotlin.github.io/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines.sync/-mutex/lock.html
 [Mutex.unlock]: https://kotlin.github.io/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines.sync/-mutex/unlock.html
 [withLock]: https://kotlin.github.io/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines.sync/with-lock.html
 <!--- INDEX kotlinx.coroutines.channels -->
-[actor]: https://kotlin.github.io/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines.channels/actor.html
-[produce]: https://kotlin.github.io/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines.channels/produce.html
 <!--- END -->

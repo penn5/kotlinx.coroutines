@@ -12,7 +12,7 @@ import java.io.*
 import kotlin.test.*
 
 @RunWith(Parameterized::class)
-class ActorTest(private val capacity: Int) : TestBase() {
+class OldActorTest(private val capacity: Int) : TestBase() {
 
     companion object {
         @Parameterized.Parameters(name = "Capacity: {0}")
