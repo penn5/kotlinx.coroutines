@@ -119,7 +119,7 @@ abstract class BaseActor(private val scope: CoroutineScope = GlobalScope, privat
             job == null && !acceptingTasks -> ActorState.STOPPED
             job == null && acceptingTasks -> ActorState.STARTING // We should only be in this state for a few ms, but it saves us the need to lock
             job != null && acceptingTasks -> ActorState.STARTED
-            else -> ActorState.STOPPING // job != null && acceptingTasks
+            else -> ActorState.STOPPING // job != null && !acceptingTasks
         }
 
     final override suspend fun <R>act(block: suspend () -> R): R {
